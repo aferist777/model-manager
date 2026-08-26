@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Model Manager</title>
+<style>
+  :root{
+    /* charcoal, tinted toward the coral accent hue */
+    --bg:        oklch(0.17 0.012 30);
+    --surface:   oklch(0.21 0.014 30);
+    --surface-2: oklch(0.25 0.016 30);
+    --line:      oklch(0.32 0.018 30);
+    --line-soft: oklch(0.28 0.015 30);
+    --ink:       oklch(0.96 0.008 40);
+    --ink-dim:   oklch(0.78 0.012 40);
+    --ink-mute:  oklch(0.62 0.014 40);
+    --accent:    oklch(0.74 0.15 32);
+    --accent-ink:oklch(0.20 0.05 32);
+    --accent-dim:oklch(0.74 0.15 32 / 0.14);
+    --good:      oklch(0.80 0.14 150);
+    --warn:      oklch(0.82 0.13 85);
+
+    --r-sm: 7px;
+    --r-md: 11px;
+    --r-lg: 14px;
+
+    --z-sticky: 100;
+    --z-backdrop: 200;
+    --z-modal: 210;
+    --z-toast: 300;
+
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0 }
+  html,body{ height:100% }
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--ink);
+    font-size:14px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button{ font-family:inherit; cursor:pointer; color:inherit; background:none; border:none }
+  ::selection{ background:var(--accent-dim) }
+  ::-webkit-scrollbar{ width:9px; height:9px }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:6px; border:2px solid transparent; background-clip:padding-box }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--line-soft) }
+
+  /* ---------- shell ---------- */
+  .app{ display:grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr) minmax(260px, 1fr); height:100vh }
+  .pane{ min-height:0; display:flex; flex-direction:column; border-right:1px solid var(--line-soft) }
+  .pane:last-child{ border-right:none }
+  .pane-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:14px 16px; border-bottom:1px solid var(--line-soft);
+    position:sticky; top:0; background:var(--bg); z-index:var(--z-sticky);
+  }
+  .pane-title{ display:flex; align-items:baseline; gap:9px; font-weight:640; letter-spacing:-0.01em }
+  .pane-title .count{ font-size:12px; font-weight:600; color:var(--ink-mute) }
+  .pane-body{ overflow:auto; flex:1; min-height:0 }
+
+  /* ---------- left: models ---------- */
+  .icon-btn{
+    display:grid; place-items:center; width:32px; height:32px; border-radius:var(--r-sm);
+    color:var(--ink-dim); border:1px solid var(--line); transition:.16s var(--ease);
+  }
+  .icon-btn:hover{ color:var(--ink); background:var(--surface-2); border-color:var(--line) }
+  .add-btn{
+    color:var(--accent-ink); background:var(--accent); border-color:transparent; font-weight:600;
+  }
+  .add-btn:hover{ filter:brightness(1.06); background:var(--accent) }
+
+  .model-list{ padding:8px }
+  .model{
+    display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:center;
+    padding:9px 10px; border-radius:var(--r-md); cursor:pointer;
+    border:1px solid transparent; transition:.14s var(--ease);
+  }
+  .model:hover{ background:var(--surface) }
+  .model[aria-selected="true"]{ background:var(--surface); border-color:var(--line) }
+  .model[aria-selected="true"] .avatar{ box-shadow:0 0 0 2px var(--accent) }
+  .avatar{
+    width:42px; height:42px; border-radius:10px; display:grid; place-items:center;
+    font-weight:680; font-size:15px; color:oklch(0.98 0 0 / 0.92); position:relative; overflow:hidden;
+  }
+  .avatar::after{ content:""; position:absolute; inset:0; background:linear-gradient(140deg, transparent, oklch(0 0 0 / 0.25)) }
+  .model-meta{ min-width:0 }
+  .model-name{ font-weight:600; letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .model-sub{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-mute); margin-top:1px }
+  .dot{ width:3px; height:3px; border-radius:50%; background:var(--ink-mute) }
+  .pill{
+    font-size:11px; font-weight:600; padding:1px 7px; border-radius:20px; line-height:1.5;
+    border:1px solid var(--line);
+  }
+  .pill.ready{ color:var(--good); border-color:oklch(0.80 0.14 150 / 0.4) }
+  .pill.draft{ color:var(--warn); border-color:oklch(0.82 0.13 85 / 0.4) }
+
+  /* ---------- center: workspace ---------- */
+  .ws-head{ padding:16px 22px; border-bottom:1px solid var(--line-soft); background:var(--bg); position:sticky; top:0; z-index:var(--z-sticky) }
+  .ws-title-row{ display:flex; align-items:center; gap:13px }
+  .ws-title{ font-size:19px; font-weight:680; letter-spacing:-0.02em }
+  .ws-niche{ font-size:13px; color:var(--ink-mute) }
+  .tabs{ display:flex; gap:2px; margin-top:14px }
+  .tab{
+    padding:7px 14px; border-radius:var(--r-sm); font-size:13px; font-weight:560; color:var(--ink-mute);
+    transition:.14s var(--ease); position:relative;
+  }
+  .tab:hover{ color:var(--ink-dim); background:var(--surface) }
+  .tab[aria-selected="true"]{ color:var(--ink); background:var(--surface-2) }
+
+  .ws-body{ padding:22px; overflow:auto; flex:1; min-height:0 }
+  .panel{ display:none }
+  .panel.active{ display:block; animation:fade .3s var(--ease) both }
+  @keyframes fade{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:none } }
+
+  .appearance{ display:grid; grid-template-columns: minmax(280px, 1.4fr) minmax(200px, 1fr); gap:20px }
+  .preview{
+    aspect-ratio:3/4; border-radius:var(--r-lg); overflow:hidden; position:relative;
+    border:1px solid var(--line); display:grid; place-items:center; text-align:center;
+  }
+  .preview .ph{ color:oklch(0.98 0 0 / 0.85); font-weight:600; letter-spacing:0.02em; font-size:15px; z-index:1 }
+  .preview .ph small{ display:block; font-weight:500; color:oklch(0.98 0 0 / 0.6); margin-top:4px; font-size:12px }
+  .spec h3{ font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-mute); font-weight:640; margin-bottom:12px }
+  .spec-row{ display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:13px }
+  .spec-row:last-child{ border-bottom:none }
+  .spec-row .k{ color:var(--ink-mute) }
+  .spec-row .v{ color:var(--ink-dim); font-weight:560 }
+  .btn-row{ display:flex; gap:9px; margin-top:18px }
+  .btn{
+    padding:9px 15px; border-radius:var(--r-sm); font-size:13px; font-weight:600;
+    border:1px solid var(--line); color:var(--ink-dim); transition:.14s var(--ease);
+  }
+  .btn:hover{ color:var(--ink); background:var(--surface); border-color:var(--line) }
+  .btn.primary{ background:var(--accent); color:var(--accent-ink); border-color:transparent }
+  .btn.primary:hover{ filter:brightness(1.06); background:var(--accent) }
+
+  .empty-state{ display:grid; place-items:center; height:100%; text-align:center; color:var(--ink-mute) }
+  .empty-state .big{ font-size:34px; margin-bottom:12px }
+  .empty-state h2{ color:var(--ink-dim); font-weight:640; letter-spacing:-0.01em; margin-bottom:6px }
+
+  /* content tab placeholder */
+  .content-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:14px }
+  .content-tile{
+    aspect-ratio:1; border-radius:var(--r-md); border:1px dashed var(--line);
+    display:grid; place-items:center; color:var(--ink-mute); font-size:13px; transition:.14s var(--ease);
+  }
+  .content-tile:hover{ border-color:var(--accent); color:var(--ink-dim); cursor:pointer }
+
+  /* ---------- right: instagram ---------- */
+  .ig-webview{ margin:12px; border:1px solid var(--line); border-radius:var(--r-md); overflow:hidden; background:var(--surface) }
+  .ig-chrome{ display:flex; align-items:center; gap:8px; padding:8px 11px; border-bottom:1px solid var(--line-soft); background:var(--surface-2) }
+  .ig-url{ flex:1; font-size:12px; color:var(--ink-mute); background:var(--bg); padding:4px 9px; border-radius:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .ig-frame{ height:200px; display:grid; place-items:center; text-align:center; padding:18px; color:var(--ink-mute); font-size:12px; line-height:1.6 }
+  .ig-frame b{ color:var(--ink-dim); display:block; font-size:13px; margin-bottom:4px }
+
+  .refs{ padding:4px 12px 16px }
+  .refs-head{ display:flex; align-items:center; justify-content:space-between; padding:6px 4px 10px }
+  .refs-head span{ font-size:12px; text-transform:uppercase; letter-spacing:0.07em; color:var(--ink-mute); font-weight:640 }
+  .ref-input{ display:flex; gap:7px; margin-bottom:12px }
+  .ref-input input{
+    flex:1; min-width:0; background:var(--surface); border:1px solid var(--line); color:var(--ink);
+    padding:8px 11px; border-radius:var(--r-sm); font-size:13px; font-family:inherit;
+  }
+  .ref-input input::placeholder{ color:var(--ink-mute) }
+  .ref-input input:focus{ outline:none; border-color:var(--accent) }
+  .ref-add{ padding:0 13px; border-radius:var(--r-sm); background:var(--accent); color:var(--accent-ink); font-weight:600 }
+
+  .ref{
+    display:grid; grid-template-columns:auto 1fr auto; gap:11px; align-items:center;
+    padding:9px; border-radius:var(--r-md); border:1px solid var(--line-soft); margin-bottom:8px;
+    transition:.14s var(--ease);
+  }
+  .ref:hover{ border-color:var(--line); background:var(--surface) }
+  .ref-thumb{ width:44px; height:44px; border-radius:8px; flex:none }
+  .ref-body{ min-width:0 }
+  .ref-title{ font-size:13px; font-weight:560; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .ref-note{ font-size:12px; color:var(--ink-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .ref-del{ color:var(--ink-mute); width:26px; height:26px; border-radius:6px; display:grid; place-items:center; opacity:0; transition:.14s var(--ease) }
+  .ref:hover .ref-del{ opacity:1 }
+  .ref-del:hover{ color:var(--accent); background:var(--surface-2) }
+
+  /* ---------- create-model dialog ---------- */
+  dialog{
+    padding:0; border:none; border-radius:var(--r-lg); background:var(--surface);
+    color:var(--ink); max-width:600px; width:calc(100vw - 40px); box-shadow:0 24px 70px oklch(0 0 0 / 0.5);
+    border:1px solid var(--line);
+  }
+  dialog::backdrop{ background:oklch(0.10 0.01 30 / 0.62); backdrop-filter:blur(3px) }
+  dialog[open]{ animation:pop .28s var(--ease) both }
+  @keyframes pop{ from{ opacity:0; transform:translateY(10px) scale(0.985) } to{ opacity:1; transform:none } }
+  .dlg-head{ display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line-soft) }
+  .dlg-head h2{ font-size:16px; font-weight:660; letter-spacing:-0.01em }
+  .dlg-steps{ display:flex; gap:6px; padding:14px 22px 0 }
+  .step-dot{ height:3px; flex:1; border-radius:3px; background:var(--line) }
+  .step-dot.done{ background:var(--accent) }
+  .dlg-body{ padding:18px 22px 6px; max-height:min(60vh, 460px); overflow:auto }
+  .field{ margin-bottom:18px }
+  .field > label{ display:block; font-size:12px; font-weight:600; color:var(--ink-dim); margin-bottom:8px; letter-spacing:0.01em }
+  .field input[type=text]{
+    width:100%; background:var(--bg); border:1px solid var(--line); color:var(--ink);
+    padding:9px 12px; border-radius:var(--r-sm); font-size:14px; font-family:inherit;
+  }
+  .field input:focus{ outline:none; border-color:var(--accent) }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px }
+  .chip{
+    padding:7px 13px; border-radius:20px; border:1px solid var(--line); font-size:13px; font-weight:540;
+    color:var(--ink-dim); transition:.14s var(--ease);
+  }
+  .chip:hover{ border-color:var(--line-soft); color:var(--ink) }
+  .chip[aria-pressed="true"]{ background:var(--accent-dim); border-color:var(--accent); color:var(--ink) }
+  .range-row{ display:flex; align-items:center; gap:12px }
+  .range-row input[type=range]{ flex:1; accent-color:var(--accent) }
+  .range-row output{ font-size:13px; color:var(--ink-dim); font-weight:600; min-width:52px; text-align:right }
+
+  .variants{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px }
+  .variant{ aspect-ratio:3/4; border-radius:var(--r-md); border:2px solid transparent; cursor:pointer; position:relative; overflow:hidden; transition:.14s var(--ease) }
+  .variant:hover{ transform:translateY(-2px) }
+  .variant[aria-pressed="true"]{ border-color:var(--accent) }
+  .variant .tick{ position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%; background:var(--accent); color:var(--accent-ink); display:none; place-items:center; font-size:12px; font-weight:800 }
+  .variant[aria-pressed="true"] .tick{ display:grid }
+  .gen-hint{ text-align:center; color:var(--ink-mute); font-size:13px; padding:8px 0 4px }
+
+  .dlg-foot{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 22px; border-top:1px solid var(--line-soft) }
+  .dlg-foot .spacer{ flex:1 }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ LEFT: MODELS ============ -->
+  <aside class="pane" aria-label="Models">
+    <div class="pane-head">
+      <div class="pane-title">Models <span class="count" id="modelCount">4</span></div>
+      <button class="icon-btn add-btn" id="addModel" title="Create model" aria-label="Create model">＋</button>
+    </div>
+    <div class="pane-body">
+      <div class="model-list" id="modelList" role="listbox" aria-label="Model list"></div>
+    </div>
+  </aside>
+
+  <!-- ============ CENTER: WORKSPACE ============ -->
+  <main class="pane" aria-label="Workspace">
+    <div class="ws-head" id="wsHead">
+      <div class="ws-title-row">
+        <div class="avatar" id="wsAvatar" style="width:40px;height:40px">—</div>
+        <div>
+          <div class="ws-title" id="wsTitle">Select a model</div>
+          <div class="ws-niche" id="wsNiche">—</div>
+        </div>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-panel="appearance" aria-selected="true">Appearance</button>
+        <button class="tab" role="tab" data-panel="content" aria-selected="false">Content</button>
+        <button class="tab" role="tab" data-panel="references" aria-selected="false">References</button>
+      </div>
+    </div>
+    <div class="ws-body" id="wsBody">
+      <!-- Appearance -->
+      <section class="panel active" data-panel="appearance">
+        <div class="appearance">
+          <div class="preview" id="wsPreview">
+            <div class="ph">Character sheet<small id="wsPreviewSub">generated appearance</small></div>
+          </div>
+          <div class="spec">
+            <h3>Appearance spec</h3>
+            <div id="wsSpec"></div>
+            <div class="btn-row">
+              <button class="btn primary">Regenerate</button>
+              <button class="btn">Edit prompt</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- Content -->
+      <section class="panel" data-panel="content">
+        <div class="content-grid">
+          <div class="content-tile">＋ New photo</div>
+          <div class="content-tile">＋ New reel</div>
+          <div class="content-tile">Photoshoot</div>
+          <div class="content-tile">Story</div>
+        </div>
+      </section>
+      <!-- References -->
+      <section class="panel" data-panel="references">
+        <div class="empty-state" style="min-height:220px">
+          <div>
+            <div class="big">🔗</div>
+            <h2>Reference board</h2>
+            <p>Saved Instagram posts for this model live here. Add links from the right panel.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============ RIGHT: INSTAGRAM ============ -->
+  <aside class="pane" aria-label="Instagram references">
+    <div class="pane-head">
+      <div class="pane-title">Instagram</div>
+      <button class="icon-btn" id="openIg" title="Open account" aria-label="Open account">↗</button>
+    </div>
+    <div class="pane-body">
+      <div class="ig-webview">
+        <div class="ig-chrome">
+          <span class="dot" style="background:var(--warn)"></span>
+          <span class="dot" style="background:var(--good)"></span>
+          <div class="ig-url">instagram.com/tech.refs.acc</div>
+        </div>
+        <div class="ig-frame">
+          <div>
+            <b>Live webview</b>
+            In the desktop build (PySide6) the real logged-in account renders here.
+            In this mockup it is a placeholder.
+          </div>
+        </div>
+      </div>
+
+      <div class="refs">
+        <div class="refs-head"><span>Saved references</span></div>
+        <div class="ref-input">
+          <input type="text" id="refUrl" placeholder="Paste post link…" />
+          <button class="ref-add" id="refAdd">Add</button>
+        </div>
+        <div id="refList"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ============ CREATE MODEL DIALOG ============ -->
+<dialog id="createDlg">
+  <div class="dlg-head">
+    <h2>Create model</h2>
+    <button class="icon-btn" id="dlgClose" aria-label="Close">✕</button>
+  </div>
+  <div class="dlg-steps" id="dlgSteps">
+    <div class="step-dot done"></div><div class="step-dot"></div><div class="step-dot"></div>
+  </div>
+  <div class="dlg-body">
+    <!-- step 1: identity + face -->
+    <div class="dlg-step" data-step="0">
+      <div class="field">
+        <label for="mName">Model name</label>
+        <input type="text" id="mName" placeholder="e.g. Mia Vance" />
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <div class="chips" data-single>
+          <button class="chip" aria-pressed="true">Female</button>
+          <button class="chip">Male</button>
+          <button class="chip">Androgynous</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Ethnicity / face type</label>
+        <div class="chips" data-single>
+          <button class="chip" aria-pressed="true">European</button>
+          <button class="chip">Slavic</button>
+          <button class="chip">Asian</button>
+          <button class="chip">Latina</button>
+          <button class="chip">African</button>
+          <button class="chip">Mixed</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Age <span id="ageOut" style="color:var(--ink-mute);font-weight:400">— 24</span></label>
+        <div class="range-row">
+          <input type="range" id="ageRange" min="18" max="55" value="24" />
+          <output for="ageRange">24 yrs</output>
+        </div>
+      </div>
+    </div>
+    <!-- step 2: body -->
+    <div class="dlg-step" data-step="1" hidden>
+      <div class="field">
+        <label>Body type</label>
+        <div class="chips" data-single>
+          <button class="chip" aria-pressed="true">Slim</button>
+          <button class="chip">Athletic</button>
+          <button class="chip">Curvy</button>
+          <button class="chip">Petite</button>
+          <button class="chip">Plus</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Height <span style="color:var(--ink-mute);font-weight:400">— 170 cm</span></label>
+        <div class="range-row">
+          <input type="range" id="hRange" min="150" max="195" value="170" />
+          <output for="hRange">170 cm</output>
+        </div>
+      </div>
+      <div class="field">
+        <label>Niche / vibe</label>
+        <input type="text" id="mNiche" placeholder="e.g. streetwear · tomboy" />
+      </div>
+    </div>
+    <!-- step 3: generate -->
+    <div class="dlg-step" data-step="2" hidden>
+      <div class="variants" id="variants"></div>
+      <div class="gen-hint" id="genHint">Pick the face you like, or regenerate.</div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="dlgBack" hidden>Back</button>
+    <div class="spacer"></div>
+    <button class="btn" id="dlgRegen" hidden>Regenerate</button>
+    <button class="btn primary" id="dlgNext">Next</button>
+  </div>
+</dialog>
+
+<script>
+const palettes = [
+  ['oklch(0.72 0.15 32)','oklch(0.55 0.12 20)'],
+  ['oklch(0.70 0.13 250)','oklch(0.50 0.11 275)'],
+  ['oklch(0.75 0.14 150)','oklch(0.55 0.12 165)'],
+  ['oklch(0.76 0.14 85)','oklch(0.58 0.12 60)'],
+  ['oklch(0.70 0.14 320)','oklch(0.52 0.12 340)'],
+  ['oklch(0.72 0.13 200)','oklch(0.52 0.11 220)'],
+];
+const grad = i => `linear-gradient(150deg, ${palettes[i%palettes.length][0]}, ${palettes[i%palettes.length][1]})`;
+const initials = n => n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+
+let models = [
+  { name:'Mia Vance',   niche:'streetwear · tomboy', status:'ready', refs:12,
+    spec:{Gender:'Female',Ethnicity:'European',Age:'24',Body:'Slim',Height:'170 cm'} },
+  { name:'Kira Snow',   niche:'soft glam · lifestyle', status:'ready', refs:7,
+    spec:{Gender:'Female',Ethnicity:'Slavic',Age:'22',Body:'Petite',Height:'165 cm'} },
+  { name:'Alex Reyes',  niche:'fitness · outdoor', status:'draft', refs:3,
+    spec:{Gender:'Male',Ethnicity:'Latino',Age:'28',Body:'Athletic',Height:'182 cm'} },
+  { name:'Noa Kim',     niche:'minimal · editorial', status:'draft', refs:0,
+    spec:{Gender:'Female',Ethnicity:'Asian',Age:'26',Body:'Slim',Height:'168 cm'} },
+];
+
+let refs = [
+  { title:'Golden-hour street set', note:'@urban.muse · pose ref' },
+  { title:'Mirror OOTD reel', note:'@tomboy.fits · outfit' },
+  { title:'Café candid grid', note:'saved · lighting' },
+];
+
+let selected = 0;
+const $ = s => document.querySelector(s);
+
+/* ---- render model list ---- */
+function renderModels(){
+  const list = $('#modelList');
+  list.innerHTML = '';
+  models.forEach((m,i)=>{
+    const el = document.createElement('div');
+    el.className='model'; el.setAttribute('role','option');
+    el.setAttribute('aria-selected', i===selected);
+    el.innerHTML = `
+      <div class="avatar" style="background:${grad(i)}">${initials(m.name)}</div>
+      <div class="model-meta">
+        <div class="model-name">${m.name}</div>
+        <div class="model-sub">
+          <span class="pill ${m.status}">${m.status}</span>
+          <span class="dot"></span><span>${m.refs} refs</span>
+        </div>
+      </div>`;
+    el.onclick = ()=>{ selected=i; renderModels(); renderWorkspace(); };
+    list.appendChild(el);
+  });
+  $('#modelCount').textContent = models.length;
+}
+
+/* ---- render center workspace ---- */
+function renderWorkspace(){
+  const m = models[selected];
+  $('#wsTitle').textContent = m.name;
+  $('#wsNiche').textContent = m.niche;
+  const av = $('#wsAvatar');
+  av.textContent = initials(m.name);
+  av.style.background = grad(selected);
+  $('#wsPreview').style.background = grad(selected);
+  $('#wsPreviewSub').textContent = m.status==='ready' ? 'character sheet' : 'not generated yet';
+  $('#wsSpec').innerHTML = Object.entries(m.spec).map(([k,v])=>
+    `<div class="spec-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+}
+
+/* ---- tabs ---- */
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', t===tab));
+    const p = tab.dataset.panel;
+    document.querySelectorAll('.panel').forEach(pn=>pn.classList.toggle('active', pn.dataset.panel===p));
+  };
+});
+
+/* ---- references ---- */
+function renderRefs(){
+  const list = $('#refList');
+  list.innerHTML='';
+  refs.forEach((r,i)=>{
+    const el = document.createElement('div');
+    el.className='ref';
+    el.innerHTML = `
+      <div class="ref-thumb" style="background:${grad(i+2)}"></div>
+      <div class="ref-body">
+        <div class="ref-title">${r.title}</div>
+        <div class="ref-note">${r.note}</div>
+      </div>
+      <button class="ref-del" title="Remove" aria-label="Remove reference">✕</button>`;
+    el.querySelector('.ref-del').onclick = ()=>{ refs.splice(i,1); renderRefs(); };
+    list.appendChild(el);
+  });
+}
+$('#refAdd').onclick = ()=>{
+  const inp = $('#refUrl'); const v = inp.value.trim();
+  if(!v) return;
+  refs.unshift({ title: v.replace(/^https?:\/\//,'').slice(0,34)||'New reference', note:'added just now' });
+  inp.value=''; renderRefs();
+};
+$('#refUrl').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#refAdd').click(); });
+$('#openIg').onclick = ()=> alert('Desktop build: opens the real Instagram webview / external browser.');
+
+/* ---- single-select chip groups ---- */
+document.querySelectorAll('.chips[data-single]').forEach(group=>{
+  group.querySelectorAll('.chip').forEach(chip=>{
+    chip.onclick = ()=> group.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed', c===chip));
+  });
+});
+$('#ageRange').addEventListener('input', e=>{ e.target.nextElementSibling.value = e.target.value+' yrs'; });
+$('#hRange').addEventListener('input', e=>{ e.target.nextElementSibling.value = e.target.value+' cm'; });
+
+/* ---- create-model dialog wizard ---- */
+const dlg = $('#createDlg');
+let step = 0;
+const steps = document.querySelectorAll('.dlg-step');
+const dots = document.querySelectorAll('.step-dot');
+
+function showStep(){
+  steps.forEach(s=> s.hidden = +s.dataset.step !== step);
+  dots.forEach((d,i)=> d.classList.toggle('done', i<=step));
+  $('#dlgBack').hidden = step===0;
+  $('#dlgRegen').hidden = step!==2;
+  const next = $('#dlgNext');
+  next.textContent = step===2 ? 'Create model' : 'Next';
+  if(step===2) buildVariants();
+}
+function buildVariants(){
+  const v = $('#variants'); v.innerHTML='';
+  for(let i=0;i<8;i++){
+    const b = document.createElement('button');
+    b.className='variant'; b.style.background = grad(i+ Math.floor(Math.random()*3));
+    b.setAttribute('aria-pressed','false');
+    b.innerHTML = '<span class="tick">✓</span>';
+    b.onclick = ()=> v.querySelectorAll('.variant').forEach(x=>x.setAttribute('aria-pressed', x===b));
+    v.appendChild(b);
+  }
+}
+$('#addModel').onclick = ()=>{ step=0; showStep(); dlg.showModal(); };
+$('#dlgClose').onclick = ()=> dlg.close();
+$('#dlgBack').onclick = ()=>{ if(step>0){ step--; showStep(); } };
+$('#dlgRegen').onclick = buildVariants;
+$('#dlgNext').onclick = ()=>{
+  if(step<2){ step++; showStep(); return; }
+  // create
+  const name = ($('#mName').value.trim()) || 'New Model';
+  const niche = ($('#mNiche').value.trim()) || 'unassigned';
+  models.push({ name, niche, status:'draft', refs:0,
+    spec:{Gender:'Female',Ethnicity:'European',Age:$('#ageRange').value,Body:'Slim',Height:$('#hRange').value+' cm'} });
+  selected = models.length-1;
+  dlg.close();
+  renderModels(); renderWorkspace();
+};
+dlg.addEventListener('click', e=>{ if(e.target===dlg) dlg.close(); });
+
+/* ---- init ---- */
+renderModels(); renderWorkspace(); renderRefs();
+</script>
+</body>
+</html>
